@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="QR Sequence">
+<meta name="theme-color" content="#1F4E6B">
+<title>QR Sequence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#EEF1F4;--card:#fff;--ink:#12161C;--muted:#5B6673;--line:#D5DBE2;--steel:#1F4E6B;--steel-soft:#E3ECF2;--signal:#FFC400;--signal-edge:#B38900;--danger:#B3261E;--mono:'IBM Plex Mono',ui-monospace,Menlo,monospace}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.5 'IBM Plex Sans',system-ui,sans-serif;-webkit-text-size-adjust:100%}
+:focus-visible{outline:3px solid var(--steel);outline-offset:2px}
+.wrap{max-width:480px;margin:0 auto;padding:calc(12px + env(safe-area-inset-top)) 14px calc(40px + env(safe-area-inset-bottom))}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+h1{font-size:18px;font-weight:600;margin:0}
+h2{font-size:16px;font-weight:600;margin:0 0 12px}
+.mode{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:2px 10px;background:var(--card)}
+nav{display:grid;grid-template-columns:1fr 1fr;background:#DDE3E9;border-radius:10px;padding:3px;margin-bottom:14px}
+nav button{font:inherit;font-weight:500;border:0;background:none;padding:10px;border-radius:8px;color:var(--muted);min-height:44px}
+nav button[aria-selected=true]{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.lbl{font-size:13px;color:var(--muted);margin:0 0 6px}
+.hint{font-size:14px;color:var(--muted);margin:14px 2px}
+.hint.pad{padding:14px;margin:0}
+.list{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;font:inherit;color:inherit;background:none;border:0;border-bottom:1px solid var(--line);border-left:4px solid transparent;padding:10px 14px;min-height:58px}
+.item:last-child{border-bottom:0}
+.item.on{background:var(--steel-soft);border-left-color:var(--steel)}
+.item.static{cursor:default}
+.grow{flex:1;min-width:0;display:flex;flex-direction:column}
+.pn{font-family:var(--mono);font-weight:600;font-size:15px}
+.nm{font-size:14px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.seqtag{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.item.on .seqtag{color:var(--steel)}
+button.sm{font:inherit;font-size:14px;font-weight:500;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 12px;min-height:40px}
+button.sm.danger{color:var(--danger)}
+button.add{display:block;width:100%;margin-top:12px;font:inherit;font-weight:500;background:var(--card);border:1px solid var(--steel);color:var(--steel);border-radius:10px;min-height:48px}
+.qrcard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:14px;text-align:center}
+.qrbox{background:#fff;padding:20px;border:1px solid var(--line);border-radius:12px;display:flex;justify-content:center;width:fit-content;margin:0 auto 14px}
+.qrbox img{display:block}
+.qrbox canvas{display:none}
+.ptitle{font-family:var(--mono);font-weight:600;font-size:22px;letter-spacing:.02em}
+.pname{color:var(--muted);margin-bottom:12px}
+.meta{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:0 0 12px;text-align:left}
+.meta .m{background:var(--bg);border-radius:8px;padding:8px 10px}
+.meta dt{font-size:12px;color:var(--muted)}
+.meta dd{margin:0;font-family:var(--mono);font-size:14px;font-weight:500}
+.meta .s dd{font-size:18px;font-weight:600}
+.raw{text-align:left;margin-bottom:14px;font-size:13px;color:var(--muted)}
+.raw summary{cursor:pointer;min-height:32px}
+.raw code{display:block;font-family:var(--mono);font-size:12px;word-break:break-all;white-space:pre-wrap;background:var(--bg);border-radius:8px;padding:8px 10px;margin-top:6px;color:var(--ink)}
+button.next{width:100%;min-height:64px;font:inherit;font-weight:600;font-size:20px;color:#12161C;background:var(--signal);border:0;border-bottom:4px solid var(--signal-edge);border-radius:12px}
+button.next:active{transform:translateY(2px);border-bottom-width:2px}
+.form{text-align:left}
+.field{display:block;margin-bottom:12px}
+.field span{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
+.field input{width:100%;font:inherit;font-size:16px;min-height:46px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+.err{color:var(--danger);font-size:14px;min-height:21px;margin:0 0 8px}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btns button{font:inherit;font-weight:500;min-height:48px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.btns button.primary{background:var(--steel);border-color:var(--steel);color:#fff}
+.empty{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 16px}
+.empty p{color:var(--muted);margin:0 0 14px}
+.empty button{font:inherit;font-weight:500;min-height:48px;padding:0 18px;border-radius:10px;border:0;background:var(--steel);color:#fff}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:#fff;font-size:14px;padding:10px 16px;border-radius:10px;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90vw;text-align:center}
+#toast.show{opacity:1}
+#toast.bad{background:var(--danger)}
+@media (prefers-reduced-motion:reduce){#toast{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>QR Sequence</h1><span class="mode" id="mode"></span></header>
+  <nav role="tablist" aria-label="Menu">
+    <button role="tab" id="t-scan" aria-selected="true" type="button">Scan</button>
+    <button role="tab" id="t-master" aria-selected="false" type="button">Master QR</button>
+  </nav>
+  <main>
+    <section id="v-scan" aria-labelledby="t-scan"></section>
+    <section id="v-master" aria-labelledby="t-master" hidden></section>
+  </main>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function(){
+'use strict';
+
+/* ===== Pengaturan =====
+   Kosongkan SUPABASE_URL dan SUPABASE_ANON_KEY untuk menyimpan data di HP ini saja.
+   Isi keduanya (jalankan supabase-schema.sql dulu) agar data tersimpan di Supabase. */
+var CONFIG={
+  SUPABASE_URL:'https://uazxbgxqusnwrtnwqnmw.supabase.co',
+  SUPABASE_ANON_KEY:'sb_publishable_UuxzsLfAQZJZWjJ_HEmgSw_9aEPpSYR',
+  PREFIX:'JPKW2B',      /* posisi 1-6, bebas */
+  DATE_FIELD:'250115',  /* posisi 7-12, bebas */
+  SUFFIX:'E0S7H025'     /* posisi 51-58, bebas */
+};
+
+var LS='qr_parts_v1', LS_SEL='qr_last_part', TABLE='qr_parts';
+var $=function(id){return document.getElementById(id)};
+var pad=function(s,n,c){return String(s).padStart(n,c)};
+
+function today(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1,2,'0')+'-'+pad(d.getDate(),2,'0')}
+function lotCode(){return today().replace(/-/g,'')}
+function qrText(p){
+  return CONFIG.PREFIX+CONFIG.DATE_FIELD+pad(p.seq,4,'0')+lotCode()+p.pn.padEnd(10,' ')+' '+pad(p.qty,15,'0')+CONFIG.SUFFIX;
+}
+
+function h(tag,props){
+  var e=document.createElement(tag), k;
+  props=props||{};
+  for(k in props){
+    if(k==='class')e.className=props[k];
+    else if(k.indexOf('on')===0)e.addEventListener(k.slice(2),props[k]);
+    else e.setAttribute(k,props[k]);
+  }
+  Array.prototype.slice.call(arguments,2).forEach(function(c){
+    if(c===null||c===undefined||c===false)return;
+    e.append(c);
+  });
+  return e;
+}
+
+var toastTimer;
+function toast(msg,bad){
+  var t=$('toast');
+  t.textContent=msg;t.className='show'+(bad?' bad':'');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(function(){t.className=''},2600);
+}
+
+/* ===== Penyimpanan ===== */
+var wantDb=!!(CONFIG.SUPABASE_URL&&CONFIG.SUPABASE_ANON_KEY);
+var db=(wantDb&&window.supabase)?window.supabase.createClient(CONFIG.SUPABASE_URL,CONFIG.SUPABASE_ANON_KEY):null;
+function fromRow(r){return {pn:r.part_number,nm:r.name_part,qty:r.qty,seq:r.seq,seqDate:r.seq_date}}
+function toRow(p){return {part_number:p.pn,name_part:p.nm,qty:p.qty,seq:p.seq,seq_date:p.seqDate}}
+function byPn(a,b){return a.pn<b.pn?-1:a.pn>b.pn?1:0}
+function lsLoad(){try{return JSON.parse(localStorage.getItem(LS))||[]}catch(e){return []}}
+
+var store={
+  list:async function(){
+    if(db){
+      var r=await db.from(TABLE).select('*').order('part_number');
+      if(r.error)throw r.error;
+      return r.data.map(fromRow);
+    }
+    return lsLoad().sort(byPn);
+  },
+  save:async function(p){
+    if(db){
+      var r=await db.from(TABLE).upsert(toRow(p));
+      if(r.error)throw r.error;
+      return;
+    }
+    var a=lsLoad().filter(function(x){return x.pn!==p.pn});
+    a.push(p);
+    localStorage.setItem(LS,JSON.stringify(a));
+  },
+  remove:async function(pn){
+    if(db){
+      var r=await db.from(TABLE).delete().eq('part_number',pn);
+      if(r.error)throw r.error;
+      return;
+    }
+    localStorage.setItem(LS,JSON.stringify(lsLoad().filter(function(x){return x.pn!==pn})));
+  }
+};
+
+/* ===== State ===== */
+var parts=[], loaded=false, selPn=null, formState=null, tab='scan', wl=null;
+
+function normalizeAll(){
+  var t=today();
+  parts.forEach(function(p){if(p.seqDate!==t){p.seq=1;p.seqDate=t}});
+}
+
+async function keepAwake(){
+  try{
+    if('wakeLock' in navigator&&!wl){
+      wl=await navigator.wakeLock.request('screen');
+      wl.addEventListener('release',function(){wl=null});
+    }
+  }catch(e){}
+}
+
+/* ===== Halaman Scan ===== */
+function select(pn){
+  selPn=pn;
+  try{localStorage.setItem(LS_SEL,pn)}catch(e){}
+  renderScan();
+  keepAwake();
+  var c=$('qrcard');
+  if(c)c.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});
+}
+
+async function next(p){
+  if(p.seq>=9999){toast('Sequence sudah mencapai 9999',true);return}
+  var oldSeq=p.seq, oldDate=p.seqDate;
+  p.seq++;p.seqDate=today();
+  renderScan();
+  try{await store.save(p)}
+  catch(e){
+    p.seq=oldSeq;p.seqDate=oldDate;renderScan();
+    toast('Sequence gagal disimpan. Coba lagi.',true);
+  }
+}
+
+function meta(label,val,strong){
+  return h('div',{class:'m'+(strong?' s':'')},h('dt',{},label),h('dd',{},String(val)));
+}
+
+function qrCard(p){
+  var box=h('div',{class:'qrbox'});
+  var card=h('div',{class:'qrcard',id:'qrcard'},
+    box,
+    h('div',{class:'ptitle'},p.pn),
+    h('div',{class:'pname'},p.nm),
+    h('dl',{class:'meta'},meta('Qty',p.qty),meta('Lot',today()),meta('Sequence',pad(p.seq,4,'0'),true)),
+    h('details',{class:'raw'},h('summary',{},'Isi teks QR'),h('code',{},qrText(p))),
+    h('button',{class:'next',type:'button',onclick:function(){next(p)}},'Lanjut')
+  );
+  try{
+    var size=Math.min(260,window.innerWidth-100);
+    new QRCode(box,{text:qrText(p),width:size,height:size,correctLevel:QRCode.CorrectLevel.M});
+  }catch(e){
+    box.textContent='QR gagal dibuat. Cek koneksi internet lalu muat ulang.';
+  }
+  return card;
+}
+
+function emptyState(){
+  return h('div',{class:'empty'},
+    h('h2',{},'Mulai dengan menambah part'),
+    h('p',{},'Isi part number, name part, dan qty di menu Master QR. Setelah itu QR-nya bisa ditampilkan dari sini.'),
+    h('button',{type:'button',onclick:function(){setTab('master');openForm(null)}},'Tambah part')
+  );
+}
+
+function renderScan(){
+  var root=$('v-scan');
+  root.replaceChildren();
+  if(!loaded){root.append(h('p',{class:'hint'},'Memuat…'));return}
+  if(!parts.length){root.append(emptyState());return}
+  var list=h('div',{class:'list'});
+  parts.forEach(function(p){
+    var on=p.pn===selPn;
+    list.append(h('button',{class:'item'+(on?' on':''),type:'button','aria-pressed':String(on),onclick:function(){select(p.pn)}},
+      h('span',{class:'grow'},h('span',{class:'pn'},p.pn),h('span',{class:'nm'},p.nm)),
+      h('span',{class:'seqtag'},'Seq '+pad(p.seq,4,'0'))
+    ));
+  });
+  root.append(h('p',{class:'lbl'},'Pilih part number'),list);
+  var sel=parts.filter(function(x){return x.pn===selPn})[0];
+  root.append(sel?qrCard(sel):h('p',{class:'hint'},'QR muncul di sini setelah part number dipilih.'));
+}
+
+/* ===== Halaman Master ===== */
+function openForm(orig){formState={orig:orig};renderMaster();var f=$('f-pn');if(f)f.focus()}
+function closeForm(){formState=null;renderMaster()}
+
+async function del(p){
+  if(!confirm('Hapus '+p.pn+'?'))return;
+  try{await store.remove(p.pn)}
+  catch(e){toast('Gagal menghapus. Coba lagi.',true);return}
+  parts=parts.filter(function(x){return x.pn!==p.pn});
+  if(selPn===p.pn)selPn=null;
+  formState=null;
+  renderAll();
+  toast('Terhapus');
+}
+
+function field(label,input){return h('label',{class:'field'},h('span',{},label),input)}
+
+function formCard(){
+  var o=formState.orig;
+  var pn=h('input',{id:'f-pn',maxlength:'10',autocapitalize:'characters',autocomplete:'off'});
+  var nm=h('input',{id:'f-nm',autocomplete:'off'});
+  var qty=h('input',{id:'f-qty',type:'number',inputmode:'numeric',min:'1',step:'1'});
+  pn.value=o?o.pn:'';nm.value=o?o.nm:'';qty.value=o?o.qty:'';
+  var err=h('p',{class:'err',role:'alert'});
+  [pn,nm,qty].forEach(function(i){i.addEventListener('input',function(){err.textContent=''})});
+  var form=h('form',{class:'qrcard form',novalidate:'novalidate'},
+    h('h2',{},o?'Edit part':'Tambah part'),
+    field('Part number',pn),field('Name part',nm),field('Qty',qty),
+    err,
+    h('div',{class:'btns'},
+      h('button',{class:'primary',type:'submit'},'Simpan'),
+      h('button',{type:'button',onclick:closeForm},'Batal'))
+  );
+  form.addEventListener('submit',async function(e){
+    e.preventDefault();
+    var v=pn.value.replace(/\s/g,'').toUpperCase(), n=nm.value.trim(), q=Number(qty.value);
+    if(!v){err.textContent='Isi part number dulu';pn.focus();return}
+    if(!n){err.textContent='Isi name part dulu';nm.focus();return}
+    if(!Number.isInteger(q)||q<1||q>99999999){err.textContent='Qty harus bilangan bulat lebih dari 0';qty.focus();return}
+    if((!o||o.pn!==v)&&parts.some(function(x){return x.pn===v})){err.textContent='Part number itu sudah ada';pn.focus();return}
+    var part=o?{pn:v,nm:n,qty:q,seq:o.seq,seqDate:o.seqDate}:{pn:v,nm:n,qty:q,seq:1,seqDate:today()};
+    try{
+      await store.save(part);
+      if(o&&o.pn!==v)await store.remove(o.pn);
+    }catch(ex){
+      err.textContent='Gagal menyimpan. Cek koneksi lalu coba lagi.';return;
+    }
+    parts=parts.filter(function(x){return !o||x.pn!==o.pn});
+    parts.push(part);parts.sort(byPn);
+    if(o&&selPn===o.pn)selPn=v;
+    formState=null;
+    renderAll();
+    toast('Tersimpan');
+  });
+  return form;
+}
+
+function renderMaster(){
+  var root=$('v-master');
+  root.replaceChildren();
+  root.append(h('p',{class:'lbl'},'Daftar master part'));
+  var list=h('div',{class:'list'});
+  if(!parts.length)list.append(h('p',{class:'hint pad'},'Belum ada part.'));
+  parts.forEach(function(p){
+    list.append(h('div',{class:'item static'},
+      h('span',{class:'grow'},h('span',{class:'pn'},p.pn),h('span',{class:'nm'},p.nm+' · Qty '+p.qty)),
+      h('button',{class:'sm',type:'button',onclick:function(){openForm(p)}},'Edit'),
+      h('button',{class:'sm danger',type:'button',onclick:function(){del(p)}},'Hapus')
+    ));
+  });
+  root.append(list,h('button',{class:'add',type:'button',onclick:function(){openForm(null)}},'Tambah part'));
+  if(formState)root.append(formCard());
+}
+
+/* ===== Umum ===== */
+function renderAll(){renderScan();renderMaster()}
+
+function setTab(t){
+  tab=t;
+  $('v-scan').hidden=t!=='scan';
+  $('v-master').hidden=t!=='master';
+  $('t-scan').setAttribute('aria-selected',String(t==='scan'));
+  $('t-master').setAttribute('aria-selected',String(t==='master'));
+  if(t==='scan')keepAwake();
+}
+
+$('t-scan').addEventListener('click',function(){setTab('scan')});
+$('t-master').addEventListener('click',function(){setTab('master')});
+
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState!=='visible')return;
+  normalizeAll();renderAll();
+  if(tab==='scan'&&selPn)keepAwake();
+});
+
+async function init(){
+  $('mode').textContent=db?'Supabase':(wantDb?'Lokal (Supabase gagal dimuat)':'Lokal');
+  setTab('scan');
+  renderAll();
+  try{parts=await store.list()}
+  catch(e){parts=[];toast('Data gagal dimuat. Cek koneksi dan pengaturan Supabase.',true)}
+  normalizeAll();
+  loaded=true;
+  try{selPn=localStorage.getItem(LS_SEL)}catch(e){selPn=null}
+  if(!parts.some(function(p){return p.pn===selPn}))selPn=null;
+  renderAll();
+}
+init();
+})();
+</script>
+</body>
+</html>
