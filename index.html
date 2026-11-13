@@ -44,6 +44,16 @@ button.add{display:block;width:100%;margin-top:12px;font:inherit;font-weight:500
 .ver{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--bg);border-radius:10px;padding:3px;margin-bottom:14px}
 .ver button{font:inherit;font-weight:500;border:0;background:none;border-radius:8px;min-height:44px;color:var(--muted)}
 .ver button[aria-pressed=true]{background:var(--steel);color:#fff}
+.sn{font-weight:600;font-size:15px;text-transform:uppercase;overflow-wrap:anywhere}
+.sp{font-family:var(--mono);font-size:13px;color:var(--muted)}
+.item.on .sp{color:var(--steel)}
+.folders{display:flex;flex-direction:column;gap:10px}
+.fhead{display:flex;align-items:center;gap:10px;width:100%;min-height:54px;padding:12px 14px;font:inherit;text-align:left;color:var(--ink);background:none;border:0}
+.fname{flex:1;font-weight:600;text-transform:uppercase;overflow-wrap:anywhere}
+.fcount{font-size:13px;color:var(--muted)}
+.chev{flex:none;width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg);transition:transform .15s}
+.fhead[aria-expanded=true] .chev{transform:rotate(45deg)}
+.fbody{border-top:1px solid var(--line)}
 .row-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
 .row-head .lbl{margin:0}
 .field .ver{margin-bottom:0}
@@ -55,8 +65,8 @@ button.login{width:100%;font:inherit;font-weight:500;min-height:48px;border-radi
 .qrbox{background:#fff;padding:20px;border:1px solid var(--line);border-radius:12px;display:flex;justify-content:center;width:fit-content;margin:0 auto 14px}
 .qrbox img{display:block}
 .qrbox canvas{display:none}
-.ptitle{font-family:var(--mono);font-weight:600;font-size:22px;letter-spacing:.02em}
-.pname{text-transform:uppercase;color:var(--muted);margin-bottom:12px}
+.ptitle{font-weight:600;font-size:20px;line-height:1.3;text-transform:uppercase;overflow-wrap:anywhere}
+.ppn{font-family:var(--mono);font-size:15px;color:var(--muted);margin:2px 0 12px}
 .meta{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:0 0 12px;text-align:left}
 .meta .m{background:var(--bg);border-radius:8px;padding:8px 10px}
 .meta dt{font-size:12px;color:var(--muted)}
@@ -81,7 +91,7 @@ button.next:active{transform:translateY(2px);border-bottom-width:2px}
 #toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:#fff;font-size:14px;padding:10px 16px;border-radius:10px;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90vw;text-align:center}
 #toast.show{opacity:1}
 #toast.bad{background:var(--danger)}
-@media (prefers-reduced-motion:reduce){#toast{transition:none}}
+@media (prefers-reduced-motion:reduce){#toast,.chev{transition:none}}
 </style>
 </head>
 <body>
@@ -159,8 +169,8 @@ function toast(msg,bad){
 /* ===== Penyimpanan ===== */
 var wantDb=!!(CONFIG.SUPABASE_URL&&CONFIG.SUPABASE_ANON_KEY);
 var db=(wantDb&&window.supabase)?window.supabase.createClient(CONFIG.SUPABASE_URL,CONFIG.SUPABASE_ANON_KEY):null;
-function fromRow(r){return {pn:r.part_number,nm:r.name_part,qty:r.qty,seq:r.seq,seqDate:r.seq_date,ver:r.ver===2?2:1}}
-function toRow(p){return {part_number:p.pn,name_part:p.nm,qty:p.qty,seq:p.seq,seq_date:p.seqDate,ver:p.ver===2?2:1}}
+function fromRow(r){return {pn:r.part_number,nm:r.name_part,qty:r.qty,seq:r.seq,seqDate:r.seq_date,ver:r.ver===2?2:1,folder:r.folder||''}}
+function toRow(p){return {part_number:p.pn,name_part:p.nm,qty:p.qty,seq:p.seq,seq_date:p.seqDate,ver:p.ver===2?2:1,folder:p.folder||''}}
 function byPn(a,b){return a.pn<b.pn?-1:a.pn>b.pn?1:0}
 function lsLoad(){try{return JSON.parse(localStorage.getItem(LS))||[]}catch(e){return []}}
 
@@ -194,7 +204,7 @@ var store={
 };
 
 /* ===== State ===== */
-var parts=[], loaded=false, selPn=null, formState=null, tab='scan', wl=null, authed=false;
+var parts=[], loaded=false, selPn=null, formState=null, tab='scan', wl=null, authed=false, openF={};
 
 function normalizeAll(){
   var t=today();
@@ -211,6 +221,32 @@ async function keepAwake(){
 }
 
 /* ===== Halaman Scan ===== */
+function fmtPn(pn){return pn.length>5?pn.slice(0,5)+'-'+pn.slice(5):pn}
+function byName(a){return a.slice().sort(function(x,y){return x.nm.localeCompare(y.nm)||(x.pn<y.pn?-1:1)})}
+function folderNames(){
+  var m={};
+  parts.forEach(function(p){if(p.folder)m[p.folder]=1});
+  return Object.keys(m).sort();
+}
+function folderGroups(){
+  var m={};
+  parts.forEach(function(p){var k=p.folder||'';(m[k]=m[k]||[]).push(p)});
+  var keys=Object.keys(m).sort(function(a,b){
+    if(a===b)return 0;
+    if(a==='')return 1;
+    if(b==='')return -1;
+    return a<b?-1:1;
+  });
+  return keys.map(function(k){return {key:k,items:m[k]}});
+}
+function partRow(p){
+  var on=p.pn===selPn;
+  return h('button',{class:'item'+(on?' on':''),type:'button','aria-pressed':String(on),onclick:function(){select(p.pn)}},
+    h('span',{class:'grow'},h('span',{class:'sn'},p.nm),h('span',{class:'sp'},fmtPn(p.pn))),
+    h('span',{class:'seqtag'},'V'+(p.ver===2?2:1)+' · Seq '+pad(p.seq,p.ver===2?3:4,'0'))
+  );
+}
+
 function select(pn){
   selPn=pn;
   try{localStorage.setItem(LS_SEL,pn)}catch(e){}
@@ -242,8 +278,8 @@ function qrCard(p){
   var text=qrText(p);
   var card=h('div',{class:'qrcard',id:'qrcard'},
     box,
-    h('div',{class:'ptitle'},p.pn),
-    h('div',{class:'pname'},p.nm),
+    h('div',{class:'ptitle'},p.nm),
+    h('div',{class:'ppn'},fmtPn(p.pn)),
     (p.ver===2&&p.pn.length>10)?h('div',{class:'note'},'Part number lebih dari 10 karakter, posisi teks versi 2 bergeser.'):null,
     h('dl',{class:'meta'},meta('Qty',p.qty),meta('Lot',today()),meta('Sequence',pad(p.seq,p.ver===2?3:4,'0'),true)),
     h('details',{class:'raw'},h('summary',{},'Isi teks QR'),h('code',{},text===null?'-':text)),
@@ -272,15 +308,32 @@ function renderScan(){
   root.replaceChildren();
   if(!loaded){root.append(h('p',{class:'hint'},'Memuat…'));return}
   if(!parts.length){root.append(emptyState());return}
-  var list=h('div',{class:'list'});
-  parts.forEach(function(p){
-    var on=p.pn===selPn;
-    list.append(h('button',{class:'item'+(on?' on':''),type:'button','aria-pressed':String(on),onclick:function(){select(p.pn)}},
-      h('span',{class:'grow'},h('span',{class:'pn'},p.pn),h('span',{class:'nm'},p.nm)),
-      h('span',{class:'seqtag'},'V'+(p.ver===2?2:1)+' · Seq '+pad(p.seq,p.ver===2?3:4,'0'))
-    ));
-  });
-  root.append(h('p',{class:'lbl'},'Pilih part number'),list);
+  var groups=folderGroups();
+  var hasFolders=groups.some(function(g){return g.key!==''});
+  root.append(h('p',{class:'lbl'},'Pilih part'));
+  if(!hasFolders){
+    var list=h('div',{class:'list'});
+    byName(parts).forEach(function(p){list.append(partRow(p))});
+    root.append(list);
+  }else{
+    var wrap=h('div',{class:'folders'});
+    groups.forEach(function(g){
+      var key=g.key, isOpen=!!openF[key];
+      var box=h('div',{class:'list'});
+      box.append(h('button',{class:'fhead',type:'button','aria-expanded':String(isOpen),onclick:function(){openF[key]=!openF[key];renderScan()}},
+        h('span',{class:'chev','aria-hidden':'true'}),
+        h('span',{class:'fname'},key||'Tanpa folder'),
+        h('span',{class:'fcount'},g.items.length+' part')
+      ));
+      if(isOpen){
+        var body=h('div',{class:'fbody'});
+        byName(g.items).forEach(function(p){body.append(partRow(p))});
+        box.append(body);
+      }
+      wrap.append(box);
+    });
+    root.append(wrap);
+  }
   var sel=parts.filter(function(x){return x.pn===selPn})[0];
   root.append(sel?qrCard(sel):h('p',{class:'hint'},'QR muncul di sini setelah part number dipilih.'));
 }
@@ -307,6 +360,14 @@ function upper(i){
   });
 }
 
+function cleanPn(i){
+  i.addEventListener('input',function(){
+    var a=i.selectionStart, before=(i.value.slice(0,a).match(/[\s-]/g)||[]).length;
+    var c=i.value.replace(/[\s-]/g,'');
+    if(c!==i.value){i.value=c;try{i.setSelectionRange(a-before,a-before)}catch(e){}}
+  });
+}
+
 function field(label,input){return h('label',{class:'field'},h('span',{},label),input)}
 
 function formCard(){
@@ -314,7 +375,10 @@ function formCard(){
   var pn=h('input',{id:'f-pn',autocapitalize:'characters',autocomplete:'off'});
   var nm=h('input',{id:'f-nm',autocomplete:'off',autocapitalize:'characters'});
   var qty=h('input',{id:'f-qty',type:'number',inputmode:'numeric',min:'1',step:'1'});
-  pn.value=o?o.pn:'';nm.value=o?o.nm:'';qty.value=o?o.qty:'';
+  var folder=h('input',{id:'f-folder',list:'f-folders',autocomplete:'off',autocapitalize:'characters'});
+  var dl=h('datalist',{id:'f-folders'});
+  folderNames().forEach(function(n){dl.append(h('option',{value:n}))});
+  pn.value=o?o.pn:'';nm.value=o?o.nm:'';qty.value=o?o.qty:'';folder.value=o?(o.folder||''):'';
   var chosen=o&&o.ver===2?2:1;
   var vp=h('div',{class:'ver',role:'group','aria-label':'Versi teks QR'});
   [1,2].forEach(function(v){
@@ -328,11 +392,11 @@ function formCard(){
     vp.append(b);
   });
   var err=h('p',{class:'err',role:'alert'});
-  [pn,nm,qty].forEach(function(i){i.addEventListener('input',function(){err.textContent=''})});
-  upper(pn);upper(nm);
+  [pn,nm,qty,folder].forEach(function(i){i.addEventListener('input',function(){err.textContent=''})});
+  upper(pn);upper(nm);upper(folder);cleanPn(pn);
   var cnt=h('span',{class:'cnt'});
   function upd(){
-    var n=pn.value.replace(/\s/g,'').length;
+    var n=pn.value.replace(/[\s-]/g,'').length;
     var over=n>CONFIG.PN_WIDTH, warn=chosen===2&&n>10;
     cnt.textContent=n+'/'+CONFIG.PN_WIDTH+(over?' · terlalu panjang':(warn?' · di versi 2 melebihi 10 karakter, posisi teks bergeser':''));
     cnt.className='cnt'+(over?' over':(warn?' warn':''));
@@ -341,7 +405,7 @@ function formCard(){
   upd();
   var form=h('form',{class:'qrcard form',novalidate:'novalidate'},
     h('h2',{},o?'Edit part':'Tambah part'),
-    field('Part number',pn),cnt,field('Name part',nm),field('Qty',qty),
+    field('Part number',pn),cnt,field('Name part',nm),field('Folder (opsional)',folder),dl,field('Qty',qty),
     h('div',{class:'field'},h('span',{},'Versi teks QR'),vp),
     err,
     h('div',{class:'btns'},
@@ -350,7 +414,7 @@ function formCard(){
   );
   form.addEventListener('submit',async function(e){
     e.preventDefault();
-    var v=pn.value.replace(/\s/g,'').toUpperCase(), n=nm.value.trim().toUpperCase(), q=Number(qty.value);
+    var v=pn.value.replace(/[\s-]/g,'').toUpperCase(), n=nm.value.trim().toUpperCase(), q=Number(qty.value), f=folder.value.trim().replace(/\s+/g,' ').toUpperCase();
     if(!v){err.textContent='Isi part number dulu';pn.focus();return}
     if(v.length>CONFIG.PN_WIDTH){err.textContent='Part number maksimal '+CONFIG.PN_WIDTH+' karakter';pn.focus();return}
     if(!n){err.textContent='Isi name part dulu';nm.focus();return}
@@ -358,7 +422,8 @@ function formCard(){
     if(chosen===2&&q>9999){err.textContent='Qty maksimal 9999 untuk versi 2';qty.focus();return}
     if(chosen===2&&o&&o.seq>999){err.textContent='Sequence sudah lebih dari 999, tidak muat di versi 2';return}
     if((!o||o.pn!==v)&&parts.some(function(x){return x.pn===v})){err.textContent='Part number itu sudah ada';pn.focus();return}
-    var part=o?{pn:v,nm:n,qty:q,seq:o.seq,seqDate:o.seqDate,ver:chosen}:{pn:v,nm:n,qty:q,seq:1,seqDate:today(),ver:chosen};
+    if(f.length>30){err.textContent='Nama folder maksimal 30 karakter';folder.focus();return}
+    var part=o?{pn:v,nm:n,qty:q,seq:o.seq,seqDate:o.seqDate,ver:chosen,folder:f}:{pn:v,nm:n,qty:q,seq:1,seqDate:today(),ver:chosen,folder:f};
     try{
       await store.save(part);
       if(o&&o.pn!==v)await store.remove(o.pn);
@@ -421,7 +486,7 @@ function renderMaster(){
   if(!parts.length)list.append(h('p',{class:'hint pad'},'Belum ada part.'));
   parts.forEach(function(p){
     list.append(h('div',{class:'item static'},
-      h('span',{class:'grow'},h('span',{class:'pn'},p.pn),h('span',{class:'nm'},p.nm+' · Qty '+p.qty+' · V'+(p.ver===2?2:1))),
+      h('span',{class:'grow'},h('span',{class:'pn'},p.pn),h('span',{class:'nm'},p.nm+' · Qty '+p.qty+' · V'+(p.ver===2?2:1)),h('span',{class:'nm'},p.folder?('Folder: '+p.folder):'Tanpa folder')),
       h('button',{class:'sm',type:'button',onclick:function(){openForm(p)}},'Edit'),
       h('button',{class:'sm danger',type:'button',onclick:function(){del(p)}},'Hapus')
     ));
@@ -462,6 +527,8 @@ async function init(){
   try{selPn=localStorage.getItem(LS_SEL)}catch(e){selPn=null}
   try{authed=sessionStorage.getItem('qr_auth')==='1'}catch(e){authed=false}
   if(!parts.some(function(p){return p.pn===selPn}))selPn=null;
+  var sp=parts.filter(function(p){return p.pn===selPn})[0];
+  if(sp)openF[sp.folder||'']=true;
   renderAll();
 }
 init();
