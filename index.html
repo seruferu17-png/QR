@@ -41,6 +41,13 @@ button.sm{font:inherit;font-size:14px;font-weight:500;background:var(--card);bor
 button.sm.danger{color:var(--danger)}
 button.add{display:block;width:100%;margin-top:12px;font:inherit;font-weight:500;background:var(--card);border:1px solid var(--steel);color:var(--steel);border-radius:10px;min-height:48px}
 .qrcard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:14px;text-align:center}
+.ver{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--bg);border-radius:10px;padding:3px;margin-bottom:14px}
+.ver button{font:inherit;font-weight:500;border:0;background:none;border-radius:8px;min-height:44px;color:var(--muted)}
+.ver button[aria-pressed=true]{background:var(--steel);color:#fff}
+.row-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.row-head .lbl{margin:0}
+.field .ver{margin-bottom:0}
+button.login{width:100%;font:inherit;font-weight:500;min-height:48px;border-radius:10px;border:0;background:var(--steel);color:#fff}
 .qrbox{background:#fff;padding:20px;border:1px solid var(--line);border-radius:12px;display:flex;justify-content:center;width:fit-content;margin:0 auto 14px}
 .qrbox img{display:block}
 .qrbox canvas{display:none}
@@ -101,6 +108,8 @@ var CONFIG={
   SUPABASE_ANON_KEY:'sb_publishable_UuxzsLfAQZJZWjJ_HEmgSw_9aEPpSYR',
   PREFIX:'JPKW2B',      /* posisi 1-6, bebas */
   DATE_FIELD:'250115',  /* posisi 7-12, bebas */
+  V2_PREFIX:'T5MNQ',            /* versi 2, bebas */
+  V2_SUFFIX:'#GINCKDJ26090501', /* versi 2, bebas */
   SUFFIX:'E0S7H025'     /* posisi 51-58, bebas */
 };
 
@@ -111,6 +120,11 @@ var pad=function(s,n,c){return String(s).padStart(n,c)};
 function today(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1,2,'0')+'-'+pad(d.getDate(),2,'0')}
 function lotCode(){return today().replace(/-/g,'')}
 function qrText(p){
+  if(p.ver===2){
+    /* Versi 2: prefix + lot(yymmdd) + seq(3) + qty(4) + part number(10) + suffix */
+    if(p.qty>9999||p.seq>999)return null;
+    return CONFIG.V2_PREFIX+lotCode().slice(2)+pad(p.seq,3,'0')+pad(p.qty,4,'0')+p.pn.padEnd(10,' ')+CONFIG.V2_SUFFIX;
+  }
   return CONFIG.PREFIX+CONFIG.DATE_FIELD+pad(p.seq,4,'0')+lotCode()+p.pn.padEnd(10,' ')+' '+pad(p.qty,15,'0')+CONFIG.SUFFIX;
 }
 
@@ -140,8 +154,8 @@ function toast(msg,bad){
 /* ===== Penyimpanan ===== */
 var wantDb=!!(CONFIG.SUPABASE_URL&&CONFIG.SUPABASE_ANON_KEY);
 var db=(wantDb&&window.supabase)?window.supabase.createClient(CONFIG.SUPABASE_URL,CONFIG.SUPABASE_ANON_KEY):null;
-function fromRow(r){return {pn:r.part_number,nm:r.name_part,qty:r.qty,seq:r.seq,seqDate:r.seq_date}}
-function toRow(p){return {part_number:p.pn,name_part:p.nm,qty:p.qty,seq:p.seq,seq_date:p.seqDate}}
+function fromRow(r){return {pn:r.part_number,nm:r.name_part,qty:r.qty,seq:r.seq,seqDate:r.seq_date,ver:r.ver===2?2:1}}
+function toRow(p){return {part_number:p.pn,name_part:p.nm,qty:p.qty,seq:p.seq,seq_date:p.seqDate,ver:p.ver===2?2:1}}
 function byPn(a,b){return a.pn<b.pn?-1:a.pn>b.pn?1:0}
 function lsLoad(){try{return JSON.parse(localStorage.getItem(LS))||[]}catch(e){return []}}
 
@@ -175,7 +189,7 @@ var store={
 };
 
 /* ===== State ===== */
-var parts=[], loaded=false, selPn=null, formState=null, tab='scan', wl=null;
+var parts=[], loaded=false, selPn=null, formState=null, tab='scan', wl=null, authed=false;
 
 function normalizeAll(){
   var t=today();
@@ -202,7 +216,8 @@ function select(pn){
 }
 
 async function next(p){
-  if(p.seq>=9999){toast('Sequence sudah mencapai 9999',true);return}
+  var max=p.ver===2?999:9999;
+  if(p.seq>=max){toast('Sequence sudah mencapai '+max,true);return}
   var oldSeq=p.seq, oldDate=p.seqDate;
   p.seq++;p.seqDate=today();
   renderScan();
@@ -219,17 +234,19 @@ function meta(label,val,strong){
 
 function qrCard(p){
   var box=h('div',{class:'qrbox'});
+  var text=qrText(p);
   var card=h('div',{class:'qrcard',id:'qrcard'},
     box,
     h('div',{class:'ptitle'},p.pn),
     h('div',{class:'pname'},p.nm),
-    h('dl',{class:'meta'},meta('Qty',p.qty),meta('Lot',today()),meta('Sequence',pad(p.seq,4,'0'),true)),
-    h('details',{class:'raw'},h('summary',{},'Isi teks QR'),h('code',{},qrText(p))),
+    h('dl',{class:'meta'},meta('Qty',p.qty),meta('Lot',today()),meta('Sequence',pad(p.seq,p.ver===2?3:4,'0'),true)),
+    h('details',{class:'raw'},h('summary',{},'Isi teks QR'),h('code',{},text===null?'-':text)),
     h('button',{class:'next',type:'button',onclick:function(){next(p)}},'Lanjut')
   );
   try{
     var size=Math.min(260,window.innerWidth-100);
-    new QRCode(box,{text:qrText(p),width:size,height:size,correctLevel:QRCode.CorrectLevel.M});
+    if(text===null){box.textContent='Qty atau sequence terlalu besar untuk Versi 2 (qty maks 9999, sequence maks 999).';box.style.maxWidth='260px'}
+    else new QRCode(box,{text:text,width:size,height:size,correctLevel:QRCode.CorrectLevel.M});
   }catch(e){
     box.textContent='QR gagal dibuat. Cek koneksi internet lalu muat ulang.';
   }
@@ -254,7 +271,7 @@ function renderScan(){
     var on=p.pn===selPn;
     list.append(h('button',{class:'item'+(on?' on':''),type:'button','aria-pressed':String(on),onclick:function(){select(p.pn)}},
       h('span',{class:'grow'},h('span',{class:'pn'},p.pn),h('span',{class:'nm'},p.nm)),
-      h('span',{class:'seqtag'},'Seq '+pad(p.seq,4,'0'))
+      h('span',{class:'seqtag'},'V'+(p.ver===2?2:1)+' · Seq '+pad(p.seq,p.ver===2?3:4,'0'))
     ));
   });
   root.append(h('p',{class:'lbl'},'Pilih part number'),list);
@@ -285,11 +302,23 @@ function formCard(){
   var nm=h('input',{id:'f-nm',autocomplete:'off'});
   var qty=h('input',{id:'f-qty',type:'number',inputmode:'numeric',min:'1',step:'1'});
   pn.value=o?o.pn:'';nm.value=o?o.nm:'';qty.value=o?o.qty:'';
+  var chosen=o&&o.ver===2?2:1;
+  var vp=h('div',{class:'ver',role:'group','aria-label':'Versi teks QR'});
+  [1,2].forEach(function(v){
+    var b=h('button',{type:'button','aria-pressed':String(chosen===v)},'Versi '+v);
+    b.addEventListener('click',function(){
+      chosen=v;
+      Array.prototype.forEach.call(vp.children,function(c,i){c.setAttribute('aria-pressed',String(i+1===chosen))});
+      err.textContent='';
+    });
+    vp.append(b);
+  });
   var err=h('p',{class:'err',role:'alert'});
   [pn,nm,qty].forEach(function(i){i.addEventListener('input',function(){err.textContent=''})});
   var form=h('form',{class:'qrcard form',novalidate:'novalidate'},
     h('h2',{},o?'Edit part':'Tambah part'),
     field('Part number',pn),field('Name part',nm),field('Qty',qty),
+    h('div',{class:'field'},h('span',{},'Versi teks QR'),vp),
     err,
     h('div',{class:'btns'},
       h('button',{class:'primary',type:'submit'},'Simpan'),
@@ -301,8 +330,10 @@ function formCard(){
     if(!v){err.textContent='Isi part number dulu';pn.focus();return}
     if(!n){err.textContent='Isi name part dulu';nm.focus();return}
     if(!Number.isInteger(q)||q<1||q>99999999){err.textContent='Qty harus bilangan bulat lebih dari 0';qty.focus();return}
+    if(chosen===2&&q>9999){err.textContent='Qty maksimal 9999 untuk versi 2';qty.focus();return}
+    if(chosen===2&&o&&o.seq>999){err.textContent='Sequence sudah lebih dari 999, tidak muat di versi 2';return}
     if((!o||o.pn!==v)&&parts.some(function(x){return x.pn===v})){err.textContent='Part number itu sudah ada';pn.focus();return}
-    var part=o?{pn:v,nm:n,qty:q,seq:o.seq,seqDate:o.seqDate}:{pn:v,nm:n,qty:q,seq:1,seqDate:today()};
+    var part=o?{pn:v,nm:n,qty:q,seq:o.seq,seqDate:o.seqDate,ver:chosen}:{pn:v,nm:n,qty:q,seq:1,seqDate:today(),ver:chosen};
     try{
       await store.save(part);
       if(o&&o.pn!==v)await store.remove(o.pn);
@@ -319,15 +350,53 @@ function formCard(){
   return form;
 }
 
+var AUTH_HASH='bf6b5bdb74c79ece9fc0ad0ac9fb0359f9555d4f35a83b2e6ec69ae99e09603d';
+async function sha256(t){
+  var b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t));
+  return Array.prototype.map.call(new Uint8Array(b),function(x){return pad(x.toString(16),2,'0')}).join('');
+}
+
+function loginCard(){
+  var u=h('input',{id:'l-u',autocomplete:'username',autocapitalize:'none',autocorrect:'off'});
+  var pw=h('input',{id:'l-p',type:'password',autocomplete:'current-password'});
+  var err=h('p',{class:'err',role:'alert'});
+  [u,pw].forEach(function(i){i.addEventListener('input',function(){err.textContent=''})});
+  var form=h('form',{class:'qrcard form',novalidate:'novalidate'},
+    h('h2',{},'Masuk ke Master QR'),
+    field('Username',u),field('Password',pw),
+    err,
+    h('button',{class:'login',type:'submit'},'Masuk')
+  );
+  form.addEventListener('submit',async function(e){
+    e.preventDefault();
+    if(!(window.crypto&&window.crypto.subtle)){err.textContent='Login butuh koneksi HTTPS. Buka lewat alamat Vercel.';return}
+    var hash=await sha256(u.value.trim()+':'+pw.value);
+    if(hash!==AUTH_HASH){err.textContent='Username atau password salah';pw.value='';pw.focus();return}
+    authed=true;
+    try{sessionStorage.setItem('qr_auth','1')}catch(x){}
+    renderMaster();
+  });
+  return form;
+}
+
+function logout(){
+  authed=false;formState=null;
+  try{sessionStorage.removeItem('qr_auth')}catch(e){}
+  renderMaster();
+}
+
 function renderMaster(){
   var root=$('v-master');
   root.replaceChildren();
-  root.append(h('p',{class:'lbl'},'Daftar master part'));
+  if(!authed){root.append(loginCard());return}
+  root.append(h('div',{class:'row-head'},
+    h('p',{class:'lbl'},'Daftar master part'),
+    h('button',{class:'sm',type:'button',onclick:logout},'Kunci')));
   var list=h('div',{class:'list'});
   if(!parts.length)list.append(h('p',{class:'hint pad'},'Belum ada part.'));
   parts.forEach(function(p){
     list.append(h('div',{class:'item static'},
-      h('span',{class:'grow'},h('span',{class:'pn'},p.pn),h('span',{class:'nm'},p.nm+' · Qty '+p.qty)),
+      h('span',{class:'grow'},h('span',{class:'pn'},p.pn),h('span',{class:'nm'},p.nm+' · Qty '+p.qty+' · V'+(p.ver===2?2:1))),
       h('button',{class:'sm',type:'button',onclick:function(){openForm(p)}},'Edit'),
       h('button',{class:'sm danger',type:'button',onclick:function(){del(p)}},'Hapus')
     ));
@@ -366,6 +435,7 @@ async function init(){
   normalizeAll();
   loaded=true;
   try{selPn=localStorage.getItem(LS_SEL)}catch(e){selPn=null}
+  try{authed=sessionStorage.getItem('qr_auth')==='1'}catch(e){authed=false}
   if(!parts.some(function(p){return p.pn===selPn}))selPn=null;
   renderAll();
 }
