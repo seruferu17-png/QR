@@ -54,6 +54,8 @@ button.add{display:block;width:100%;margin-top:12px;font:inherit;font-weight:500
 .chev{flex:none;width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg);transition:transform .15s}
 .fhead[aria-expanded=true] .chev{transform:rotate(45deg)}
 .fbody{border-top:1px solid var(--line)}
+.field select{width:100%;font:inherit;font-size:16px;min-height:46px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+.fmt{text-align:left;margin-bottom:12px}
 .row-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
 .row-head .lbl{margin:0}
 .field .ver{margin-bottom:0}
@@ -122,25 +124,35 @@ var CONFIG={
   SUPABASE_ANON_KEY:'sb_publishable_UuxzsLfAQZJZWjJ_HEmgSw_9aEPpSYR',
   PREFIX:'JPKW2B',      /* posisi 1-6, bebas */
   DATE_FIELD:'250115',  /* posisi 7-12, bebas */
+  GRAM_FORMAT:'dot3',             /* qty satuan gram (dikirim sebagai kg): dot3 | comma3 | dotmin */
   PN_WIDTH:18,                  /* versi 1: lebar kolom part number, sisanya spasi */
   V2_PREFIX:'T5MNQ',            /* versi 2, bebas */
   V2_SUFFIX:'#GINCKDJ26090501', /* versi 2, bebas */
   SUFFIX:'E0S7H025'     /* posisi 51-58, bebas */
 };
 
-var LS='qr_parts_v1', LS_SEL='qr_last_part', TABLE='qr_parts';
+var LS='qr_parts_v1', LS_SEL='qr_last_part', LS_GF='qr_gram_fmt', TABLE='qr_parts';
 var $=function(id){return document.getElementById(id)};
 var pad=function(s,n,c){return String(s).padStart(n,c)};
 
 function today(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1,2,'0')+'-'+pad(d.getDate(),2,'0')}
 function lotCode(){return today().replace(/-/g,'')}
+function qtyField(p){
+  if(p.unit!=='gram')return pad(p.qty,15,'0');
+  /* gram -> kg: dihitung dengan bilangan bulat supaya tidak ada selisih pembulatan */
+  var kg=Math.floor(p.qty/1000), r3=pad(p.qty%1000,3,'0');
+  if(gramFmt==='comma3')return pad(kg,11,'0')+','+r3;
+  if(gramFmt==='dotmin')return r3==='000'?pad(kg,15,'0'):pad(kg+'.'+r3.replace(/0+$/,''),15,'0');
+  return pad(kg,11,'0')+'.'+r3;
+}
+
 function qrText(p){
   if(p.ver===2){
     /* Versi 2: prefix + lot(yymmdd) + seq(3) + qty(4) + part number(10) + suffix */
-    if(p.qty>9999||p.seq>999)return null;
+    if(p.unit==='gram'||p.qty>9999||p.seq>999)return null;
     return CONFIG.V2_PREFIX+lotCode().slice(2)+pad(p.seq,3,'0')+pad(p.qty,4,'0')+p.pn.padEnd(10,' ')+CONFIG.V2_SUFFIX;
   }
-  return CONFIG.PREFIX+CONFIG.DATE_FIELD+pad(p.seq,4,'0')+lotCode()+p.pn.padEnd(CONFIG.PN_WIDTH,' ')+pad(p.qty,15,'0')+CONFIG.SUFFIX;
+  return CONFIG.PREFIX+CONFIG.DATE_FIELD+pad(p.seq,4,'0')+lotCode()+p.pn.padEnd(CONFIG.PN_WIDTH,' ')+qtyField(p)+CONFIG.SUFFIX;
 }
 
 function h(tag,props){
@@ -169,8 +181,8 @@ function toast(msg,bad){
 /* ===== Penyimpanan ===== */
 var wantDb=!!(CONFIG.SUPABASE_URL&&CONFIG.SUPABASE_ANON_KEY);
 var db=(wantDb&&window.supabase)?window.supabase.createClient(CONFIG.SUPABASE_URL,CONFIG.SUPABASE_ANON_KEY):null;
-function fromRow(r){return {pn:r.part_number,nm:r.name_part,qty:r.qty,seq:r.seq,seqDate:r.seq_date,ver:r.ver===2?2:1,folder:r.folder||''}}
-function toRow(p){return {part_number:p.pn,name_part:p.nm,qty:p.qty,seq:p.seq,seq_date:p.seqDate,ver:p.ver===2?2:1,folder:p.folder||''}}
+function fromRow(r){return {pn:r.part_number,nm:r.name_part,qty:r.qty,seq:r.seq,seqDate:r.seq_date,ver:r.ver===2?2:1,folder:r.folder||'',unit:r.unit==='gram'?'gram':'normal'}}
+function toRow(p){return {part_number:p.pn,name_part:p.nm,qty:p.qty,seq:p.seq,seq_date:p.seqDate,ver:p.ver===2?2:1,folder:p.folder||'',unit:p.unit==='gram'?'gram':'normal'}}
 function byPn(a,b){return a.pn<b.pn?-1:a.pn>b.pn?1:0}
 function lsLoad(){try{return JSON.parse(localStorage.getItem(LS))||[]}catch(e){return []}}
 
@@ -204,7 +216,7 @@ var store={
 };
 
 /* ===== State ===== */
-var parts=[], loaded=false, selPn=null, formState=null, tab='scan', wl=null, authed=false, openF={};
+var parts=[], loaded=false, selPn=null, formState=null, tab='scan', wl=null, authed=false, openF={}, gramFmt=CONFIG.GRAM_FORMAT;
 
 function normalizeAll(){
   var t=today();
@@ -273,6 +285,20 @@ function meta(label,val,strong){
   return h('div',{class:'m'+(strong?' s':'')},h('dt',{},label),h('dd',{},String(val)));
 }
 
+function gramPicker(){
+  var sel=h('select',{id:'gram-fmt'});
+  [['dot3','Titik, 3 desimal'],['comma3','Koma, 3 desimal'],['dotmin','Titik, desimal seperlunya']].forEach(function(o){
+    sel.append(h('option',{value:o[0]},o[1]));
+  });
+  sel.value=gramFmt;
+  sel.addEventListener('change',function(){
+    gramFmt=sel.value;
+    try{localStorage.setItem(LS_GF,gramFmt)}catch(e){}
+    renderScan();
+  });
+  return h('label',{class:'field fmt'},h('span',{},'Format qty gram (uji), dikirim sebagai kg'),sel);
+}
+
 function qrCard(p){
   var box=h('div',{class:'qrbox'});
   var text=qrText(p);
@@ -281,13 +307,14 @@ function qrCard(p){
     h('div',{class:'ptitle'},p.nm),
     h('div',{class:'ppn'},fmtPn(p.pn)),
     (p.ver===2&&p.pn.length>10)?h('div',{class:'note'},'Part number lebih dari 10 karakter, posisi teks versi 2 bergeser.'):null,
-    h('dl',{class:'meta'},meta('Qty',p.qty),meta('Lot',today()),meta('Sequence',pad(p.seq,p.ver===2?3:4,'0'),true)),
+    h('dl',{class:'meta'},meta('Qty',p.unit==='gram'?p.qty+' g':p.qty),meta('Lot',today()),meta('Sequence',pad(p.seq,p.ver===2?3:4,'0'),true)),
+    p.unit==='gram'?gramPicker():null,
     h('details',{class:'raw'},h('summary',{},'Isi teks QR'),h('code',{},text===null?'-':text)),
     h('button',{class:'next',type:'button',onclick:function(){next(p)}},'Lanjut')
   );
   try{
     var size=Math.min(260,window.innerWidth-100);
-    if(text===null){box.textContent='Qty atau sequence terlalu besar untuk Versi 2 (qty maks 9999, sequence maks 999).';box.style.maxWidth='260px'}
+    if(text===null){box.textContent=(p.unit==='gram'?'Satuan gram hanya didukung di Versi 1.':'Qty atau sequence terlalu besar untuk Versi 2 (qty maks 9999, sequence maks 999).');box.style.maxWidth='260px'}
     else new QRCode(box,{text:text,width:size,height:size,correctLevel:QRCode.CorrectLevel.M});
   }catch(e){
     box.textContent='QR gagal dibuat. Cek koneksi internet lalu muat ulang.';
@@ -379,6 +406,17 @@ function formCard(){
   var dl=h('datalist',{id:'f-folders'});
   folderNames().forEach(function(n){dl.append(h('option',{value:n}))});
   pn.value=o?o.pn:'';nm.value=o?o.nm:'';qty.value=o?o.qty:'';folder.value=o?(o.folder||''):'';
+  var unit=o&&o.unit==='gram'?'gram':'normal';
+  var up=h('div',{class:'ver',role:'group','aria-label':'Satuan qty'});
+  [['normal','Biasa'],['gram','Gram']].forEach(function(u){
+    var b=h('button',{type:'button','aria-pressed':String(unit===u[0])},u[1]);
+    b.addEventListener('click',function(){
+      unit=u[0];
+      Array.prototype.forEach.call(up.children,function(c,i){c.setAttribute('aria-pressed',String(['normal','gram'][i]===unit))});
+      err.textContent='';
+    });
+    up.append(b);
+  });
   var chosen=o&&o.ver===2?2:1;
   var vp=h('div',{class:'ver',role:'group','aria-label':'Versi teks QR'});
   [1,2].forEach(function(v){
@@ -406,6 +444,7 @@ function formCard(){
   var form=h('form',{class:'qrcard form',novalidate:'novalidate'},
     h('h2',{},o?'Edit part':'Tambah part'),
     field('Part number',pn),cnt,field('Name part',nm),field('Folder (opsional)',folder),dl,field('Qty',qty),
+    h('div',{class:'field'},h('span',{},'Satuan qty'),up,h('span',{class:'cnt',style:'margin:8px 0 0'},'Gram: isi qty dalam gram, QR menuliskannya sebagai kg.')),
     h('div',{class:'field'},h('span',{},'Versi teks QR'),vp),
     err,
     h('div',{class:'btns'},
@@ -419,11 +458,12 @@ function formCard(){
     if(v.length>CONFIG.PN_WIDTH){err.textContent='Part number maksimal '+CONFIG.PN_WIDTH+' karakter';pn.focus();return}
     if(!n){err.textContent='Isi name part dulu';nm.focus();return}
     if(!Number.isInteger(q)||q<1||q>99999999){err.textContent='Qty harus bilangan bulat lebih dari 0';qty.focus();return}
+    if(unit==='gram'&&chosen===2){err.textContent='Satuan gram hanya untuk Versi 1';return}
     if(chosen===2&&q>9999){err.textContent='Qty maksimal 9999 untuk versi 2';qty.focus();return}
     if(chosen===2&&o&&o.seq>999){err.textContent='Sequence sudah lebih dari 999, tidak muat di versi 2';return}
     if((!o||o.pn!==v)&&parts.some(function(x){return x.pn===v})){err.textContent='Part number itu sudah ada';pn.focus();return}
     if(f.length>30){err.textContent='Nama folder maksimal 30 karakter';folder.focus();return}
-    var part=o?{pn:v,nm:n,qty:q,seq:o.seq,seqDate:o.seqDate,ver:chosen,folder:f}:{pn:v,nm:n,qty:q,seq:1,seqDate:today(),ver:chosen,folder:f};
+    var part=o?{pn:v,nm:n,qty:q,seq:o.seq,seqDate:o.seqDate,ver:chosen,folder:f,unit:unit}:{pn:v,nm:n,qty:q,seq:1,seqDate:today(),ver:chosen,folder:f,unit:unit};
     try{
       await store.save(part);
       if(o&&o.pn!==v)await store.remove(o.pn);
@@ -486,7 +526,7 @@ function renderMaster(){
   if(!parts.length)list.append(h('p',{class:'hint pad'},'Belum ada part.'));
   parts.forEach(function(p){
     list.append(h('div',{class:'item static'},
-      h('span',{class:'grow'},h('span',{class:'pn'},p.pn),h('span',{class:'nm'},p.nm+' · Qty '+p.qty+' · V'+(p.ver===2?2:1)),h('span',{class:'nm'},p.folder?('Folder: '+p.folder):'Tanpa folder')),
+      h('span',{class:'grow'},h('span',{class:'pn'},p.pn),h('span',{class:'nm'},p.nm+' · Qty '+p.qty+(p.unit==='gram'?' g':'')+' · V'+(p.ver===2?2:1)),h('span',{class:'nm'},p.folder?('Folder: '+p.folder):'Tanpa folder')),
       h('button',{class:'sm',type:'button',onclick:function(){openForm(p)}},'Edit'),
       h('button',{class:'sm danger',type:'button',onclick:function(){del(p)}},'Hapus')
     ));
@@ -527,6 +567,7 @@ async function init(){
   try{selPn=localStorage.getItem(LS_SEL)}catch(e){selPn=null}
   try{authed=sessionStorage.getItem('qr_auth')==='1'}catch(e){authed=false}
   if(!parts.some(function(p){return p.pn===selPn}))selPn=null;
+  try{var gf=localStorage.getItem(LS_GF);if(gf==='dot3'||gf==='comma3'||gf==='dotmin')gramFmt=gf}catch(e){}
   var sp=parts.filter(function(p){return p.pn===selPn})[0];
   if(sp)openF[sp.folder||'']=true;
   renderAll();
